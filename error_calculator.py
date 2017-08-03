@@ -5,11 +5,12 @@ Computes and prints the overall classification error and precision, recall, F-sc
 """
 
 from numpy import nan
-import data
 import codecs
 import sys
 
-MAPPING = {}#{"!EXCLAMATIONMARK": ".PERIOD", "?QUESTIONMARK": ".PERIOD", ":COLON": ".PERIOD", ";SEMICOLON": ".PERIOD"} # Can be used to estimate 2-class performance for example
+SPACE = "_"
+
+PUNCTUATION_VOCABULARY = {SPACE, ",", ".", "?", "!", "-", ";", ":"}
 
 def compute_error(target_paths, predicted_paths):
     counter = 0
@@ -39,16 +40,16 @@ def compute_error(target_paths, predicted_paths):
             
             while True:
 
-                if data.PUNCTUATION_MAPPING.get(target_stream[t_i], target_stream[t_i]) in data.PUNCTUATION_VOCABULARY:
-                    while data.PUNCTUATION_MAPPING.get(target_stream[t_i], target_stream[t_i]) in data.PUNCTUATION_VOCABULARY: # skip multiple consecutive punctuations
-                        target_punctuation = data.PUNCTUATION_MAPPING.get(target_stream[t_i], target_stream[t_i])
-                        target_punctuation = MAPPING.get(target_punctuation, target_punctuation)
+                if target_stream[t_i] in PUNCTUATION_VOCABULARY:
+                    while target_stream[t_i] in PUNCTUATION_VOCABULARY: # skip multiple consecutive punctuations
+                        target_punctuation = target_stream[t_i]
+                        target_punctuation = target_punctuation
                         t_i += 1
                 else:
                     target_punctuation = " "
 
-                if predicted_stream[p_i] in data.PUNCTUATION_VOCABULARY:
-                    predicted_punctuation = MAPPING.get(predicted_stream[p_i], predicted_stream[p_i])
+                if predicted_stream[p_i] in PUNCTUATION_VOCABULARY:
+                    predicted_punctuation = predicted_stream[p_i]
                     p_i += 1
                 else:
                     predicted_punctuation = " "
@@ -93,9 +94,9 @@ def compute_error(target_paths, predicted_paths):
 
     print "-"*46
     print "{:<16} {:<9} {:<9} {:<9}".format('PUNCTUATION','PRECISION','RECALL','F-SCORE')
-    for p in data.PUNCTUATION_VOCABULARY:
+    for p in PUNCTUATION_VOCABULARY:
 
-        if p == data.SPACE:
+        if p == SPACE:
             continue
 
         overall_tp += true_positives.get(p,0.)
@@ -106,7 +107,7 @@ def compute_error(target_paths, predicted_paths):
         precision = (true_positives.get(p,0.) / (true_positives.get(p,0.) + false_positives[p])) if p in false_positives else nan
         recall = (true_positives.get(p,0.) / (true_positives.get(p,0.) + false_negatives[p])) if p in false_negatives else nan
         f_score = (2. * precision * recall / (precision + recall)) if (precision + recall) > 0 else nan        
-        print u"{:<16} {:<9} {:<9} {:<9}".format(punctuation, round(precision,3)*100, round(recall,3)*100, round(f_score,3)*100).encode('utf-8')
+        print "{:<16} {:<9} {:<9} {:<9}".format(punctuation, round(precision,3)*100, round(recall,3)*100, round(f_score,3)*100)
     print "-"*46
     pre = overall_tp/(overall_tp+overall_fp) if overall_fp else nan
     rec = overall_tp/(overall_tp+overall_fn) if overall_fn else nan
