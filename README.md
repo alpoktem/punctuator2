@@ -38,7 +38,7 @@ Predictions are compared with groundtruth data in $datadir.
 
 ## Citing
 
-This work will be published in:
+This work is published as:
 
 	@inproceedings{punkProse,
 		author = {Alp Oktem and Mireia Farrus and Leo Wanner},
