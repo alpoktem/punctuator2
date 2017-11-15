@@ -29,14 +29,12 @@ Testing is done on continuous data in test.pickle under $datadir.
 
 `python punctuator.py -m Model_single-stage_mod_rangeF0-rangeI0_h100_lr0.05.pcl -i $datadir -o $out_predictions -p -f range.f0.id -f range.i0.id`
 
-
 * Scoring testing output:
 Predictions are compared with groundtruth data in $datadir. 
 
 `groundtruthData=$datadir/groundtruth/data1.txt`
 
 `python error_calculator.py $groundtruthData $out_predictions`
-
 
 ## Citing
 

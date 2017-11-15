@@ -69,19 +69,18 @@ def load(file_path, minibatch_size, x, p=None, feature_a=None, feature_b=None, f
             x_vocabulary_size=state["x_vocabulary_size"],
             y_vocabulary_size=state["y_vocabulary_size"]
         )
-
     elif num_semitone_features == 0: #words+pause
         net = Model(
             rng=rng,
             x=x,
+            p=p,
             minibatch_size=minibatch_size,
             n_hidden=state["n_hidden"],
             n_hidden_params=state["n_hidden_params"],
             x_vocabulary_size=state["x_vocabulary_size"],
             y_vocabulary_size=state["y_vocabulary_size"],
             no_pause_levels=state["num_pause"],
-            no_semitone_levels=state["num_semitones"],
-            p=p
+            no_semitone_levels=state["num_semitones"]
         )
     elif num_semitone_features == 1:
         print("burda")
@@ -419,7 +418,7 @@ class GRU_single_concat_early_noPause(object):
             "epoch":                    epoch,
             "random_state":             random_state,
             "num_pause":                self.no_pause_levels,
-            "num_semitone":             self.no_semitone_levels
+            "num_semitones":             self.no_semitone_levels
         }
 
         with open(file_path, 'wb') as f:
@@ -567,7 +566,7 @@ class GRU_single_concat_early(object):
             "epoch":                    epoch,
             "random_state":             random_state,
             "num_pause":                self.no_pause_levels,
-            "num_semitone":             self.no_semitone_levels
+            "num_semitones":             self.no_semitone_levels
         }
 
         with open(file_path, 'wb') as f:
