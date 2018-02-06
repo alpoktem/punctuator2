@@ -12,19 +12,23 @@ import theano.tensor as T
 import numpy as np
 
 def restore_unsequenced_test_data(test_data_path, vocabulary_dict, predict_function, input_feature_names, sequence_length, output_text=None):
-	proscript_data = read_proscript(test_data_path)
+	proscript_data = read_proscript(test_data_path, add_end=True)
 
 	i = 0
 	with codecs.open(output_text, 'w', 'utf-8') as f_out:
 		while True:
-			subsequence_words = proscript_data['word'][i: i + sequence_length]
+			subsequence_words = proscript_data['word'][i: i + sequence_length - 1]
 			subsequences = {feature_name: proscript_data[feature_name][i: i + sequence_length] for feature_name in input_feature_names if not feature_name in vocabulary_dict.keys()}
 			for feature_name in vocabulary_dict.keys():
 				vocabulary = vocabulary_dict[feature_name]
 				subsequences[feature_name] = [vocabulary.get(w, vocabulary[UNK]) for w in proscript_data[feature_name][i: i + sequence_length]]
 
 			predict_from = [to_array(subsequences[feature_name]) for feature_name in input_feature_names]
-			y = predict_function(*predict_from)
+			try:
+				y = predict_function(*predict_from)
+			except:
+				print("fucked")
+				print(subsequence_words)
 
 			predicted_punctuation_sequence = [0] + [np.argmax(y_t.flatten()) for y_t in y]
 			#print(predicted_punctuation_sequence)
@@ -109,9 +113,13 @@ def main(options):
 		vocabulary_dict['pos'] = pos_vocabulary
 
 	print("Loading model parameters...")
-	net, inputs, input_feature_names, _ = models.load(model_file, 1)
-	print("Trained with:")
+	if options.build_on_stage_1:
+		net, inputs, input_feature_names, _ = models.load_stage2(model_file, 1, options.build_on_stage_1)
+	else:
+		net, inputs, input_feature_names, _ = models.load(model_file, 1)
+	print("Model trained with:")
 	print(input_feature_names)
+	print(inputs)
 
 	print("Building model...")
 	predict = theano.function(inputs=inputs, outputs=net.y)
@@ -139,7 +147,7 @@ def main(options):
 								  	   predict_function=predict, 
 								  	   input_feature_names=input_feature_names, 
 								  	   sequence_length=options.sequence_length,
-								  	   output_text=TEST_OUTPUT_FILE)
+								  	   output_text=OUTPUT_FILE)
 		print("Predictions written to %s"%OUTPUT_FILE)
 
 if __name__ == "__main__":
@@ -153,6 +161,7 @@ if __name__ == "__main__":
 	parser.add_option("-o", "--output", dest="output", default=None, help="output file/directory to write predictions", type="string")
 	parser.add_option("-r", "--readable_format", dest="readable_format", default=True, help="flag if output is desired in human readable format", action='store_true')
 	parser.add_option("-s", "--sequence_length", dest="sequence_length", default=50, help="sequence length for punctuating", type="int")
+	parser.add_option("-t", "--build_on_stage_1", dest="build_on_stage_1", default=None, help="Use two stage approach. Input stage 1 model", type="string")
 
 	(options, args) = parser.parse_args()
 

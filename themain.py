@@ -6,6 +6,7 @@ import sys
 import os
 import numpy as np
 from time import time
+import yaml
 
 import themodel as models
 from themodel import PuncTensor
@@ -20,14 +21,13 @@ L2_REG = 0.0
 CLIPPING_THRESHOLD = 2.0
 PATIENCE_EPOCHS = 1
 
-
 def get_minibatch(sample_directory, vocabulary_dict, batch_size, sequence_length, shuffle=False, input_feature_names = [], reduced_punctuation=True):
 	sample_file_list = os.listdir(sample_directory)
 
 	if shuffle:
 		np.random.shuffle(sample_file_list)
 
-	input_batches = {feature_name:[] for feature_name in ALL_POSSIBLE_INPUT_FEATURES}
+	input_batches = {feature_name:[] for feature_name in input_feature_names}
 	output_batch = []
 
 	if len(sample_file_list) < batch_size:
@@ -93,14 +93,20 @@ def get_minibatch(sample_directory, vocabulary_dict, batch_size, sequence_length
 			output_batch = []
 		
 def main(options):
+	if checkArgument(options.params_filename, isFile=True):
+		with open(options.params_filename, 'r') as ymlfile:
+			config = yaml.load(ymlfile)
+	else:
+		sys.exit()
+
 	if checkArgument(options.model_name):
 		model_name = options.model_name
 	else:
 		sys.exit("'Model name' (-m)missing!")
 
-	num_hidden = int(options.num_hidden)
+	num_hidden = int(config["NUM_HIDDEN_OUTPUT"])
 	#num_hidden_params = int(options.num_hidden_params)
-	learning_rate = float(options.learning_rate)
+	learning_rate = float(config["LEARNING_RATE"])
 	batch_size = int(options.batch_size)
 	sample_size = int(options.sample_size)
 	input_feature_names = options.input_features
@@ -117,15 +123,25 @@ def main(options):
 	else:
 		sys.exit("Data directory missing")
 
-	model_file_name = "Model_single-stage_%s_h%d_lr%s.pcl"%(model_name, num_hidden, learning_rate)
+	if options.build_on_stage_1:
+		stage1_model_file_name = options.build_on_stage_1
+		model_file_name = "Model_stage-2_%s_h%d_lr%s.pcl"%(model_name, num_hidden, learning_rate)
+	else:
+		model_file_name = "Model_single-stage_%s_h%d_lr%s.pcl"%(model_name, num_hidden, learning_rate)
+
+	if checkArgument(model_file_name, isFile=True):
+		answer = input("Model with same name exists. Overwrite? (y/n)")
+		if not answer.lower() == "y":
+			sys.exit("Change model name.")
+
 	print("model filename:%s"%model_file_name)
 	print("num_hidden:%i, learning rate:%.2f"%(num_hidden, learning_rate))
 	print("batch_size:%i, sample padding length:%i"%(batch_size, sample_size))
 
 	#Load vocabularies of vocabularized features
 	for feature_name in input_feature_names:
-		if feature_name in FEATURE_VOCABULARIES.keys():
-			VOCAB_FILE = os.path.join(data_dir, FEATURE_VOCABULARIES[feature_name])
+		if feature_name in config["FEATURE_VOCABULARIES"].keys():
+			VOCAB_FILE = os.path.join(data_dir, config["FEATURE_VOCABULARIES"][feature_name])
 			if not checkArgument(VOCAB_FILE, isFile=True):
 				sys.exit("%s vocabulary file missing!"%feature_name)
 			vocabulary = read_vocabulary(VOCAB_FILE)
@@ -143,40 +159,57 @@ def main(options):
 	lr = T.scalar('lr')
 	y = T.imatrix('y')
 
-	input_PuncTensors = []
-	for feature_name in input_feature_names:
-		#if feature_name in input_feature_names:
-		stats = "Training with %s"%feature_name
-		if feature_name in BIDIRECTIONAL_FEATURES:
-			is_bidi = True
-			stats += " (bidirectional)"
-		else:
-			is_bidi = False
-
-		if feature_name in vocabulary_dict.keys():
-			vocabulary = vocabulary_dict[feature_name]
-			stats += " (vocabulary size: %i)"%len(vocabulary)
-			tensor = T.imatrix(feature_name)
-			vocabulary_size = len(vocabulary_dict[feature_name])
-			feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=FEATURE_NUM_HIDDEN[feature_name], size_emb=num_hidden, vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=is_bidi)
-		else:
-			tensor = T.matrix(feature_name)
-			feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=FEATURE_NUM_HIDDEN[feature_name], size_emb=1, vocabularized=False, bidirectional=is_bidi)
-		input_PuncTensors.append(feature_PuncTensor)
-		print(stats)
-		# else:
-		# 	pass
-			#empty_feature_PuncTensor = PuncTensor(name=feature_name)
-
 	#build model
 	rng = np.random
 	rng.seed(1)
-	net = models.GRU_parallel(rng=rng, 
-							  y_vocabulary_size=y_vocabulary_size, 
-							  minibatch_size=batch_size, 
-							  num_hidden_output = num_hidden,
-							  input_tensors=input_PuncTensors)
+	input_PuncTensors = []
+	if options.build_on_stage_1:
+		p = T.matrix('pause_before')
+		stage1_net, stage1_inputs, stage1_input_feature_names, _ = models.load(stage1_model_file_name, batch_size)
+		x = stage1_inputs[0]
 
+		vocabulary_size = len(vocabulary_dict["word"])
+		x_PuncTensor = PuncTensor(name="word", tensor=x, size_hidden=config["FEATURE_NUM_HIDDEN"]["word"], size_emb=config["FEATURE_EMB_SIZE"]["word"], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=True)
+		p_PuncTensor = PuncTensor(name="pause_before", tensor=p, size_hidden=config["FEATURE_NUM_HIDDEN"]["pause_before"], size_emb=1, vocabularized=False, bidirectional=False)
+		input_PuncTensors.append(x_PuncTensor)
+		input_PuncTensors.append(p_PuncTensor)
+		net = models.GRU_stage2(rng=rng,
+								y_vocabulary_size=y_vocabulary_size, 
+							  	minibatch_size=batch_size, 
+							  	num_hidden_output = num_hidden,
+							  	x_PuncTensor=x_PuncTensor,
+							  	p_PuncTensor=p_PuncTensor, 
+							  	stage1_net=stage1_net,
+							  	stage1_inputs=stage1_inputs,
+							  	stage1_input_feature_names=stage1_input_feature_names)
+	else:
+		for feature_name in input_feature_names:
+			#if feature_name in input_feature_names:
+			stats = "Training with %s"%feature_name
+			if feature_name in config["BIDIRECTIONAL_FEATURES"]:
+				is_bidi = True
+				stats += " (bidirectional)"
+			else:
+				is_bidi = False
+
+			if feature_name in vocabulary_dict.keys():
+				vocabulary = vocabulary_dict[feature_name]
+				stats += " (vocabulary size: %i)"%len(vocabulary)
+				stats += " (embedded size: %i)"%config["FEATURE_EMB_SIZE"][feature_name]
+				tensor = T.imatrix(feature_name)
+				vocabulary_size = len(vocabulary_dict[feature_name])
+				feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=config["FEATURE_EMB_SIZE"][feature_name], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=is_bidi)
+			else:
+				tensor = T.matrix(feature_name)
+				feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=1, vocabularized=False, bidirectional=is_bidi)
+			input_PuncTensors.append(feature_PuncTensor)
+			print(stats)
+
+		net = models.GRU_parallel(rng=rng, 
+								  y_vocabulary_size=y_vocabulary_size, 
+								  minibatch_size=batch_size, 
+								  num_hidden_output = num_hidden,
+								  input_tensors=input_PuncTensors)
 	starting_epoch = 0
 	best_ppl = np.inf
 	validation_ppl_history = []
@@ -186,9 +219,6 @@ def main(options):
 	#assign inputs
 	training_inputs = [i.tensor for i in input_PuncTensors] + [y, lr]
 	validation_inputs = [i.tensor for i in input_PuncTensors] + [y]
-
-	#training_inputs = [ In(i.tensor, value=None, name=i.name) for i in input_PuncTensors] + [In(y, value=None, name="output"), In(lr, value=None, name="lr")]
-	#validation_inputs = [ In(i.tensor, value=None, name=i.name) for i in input_PuncTensors] + [In(y, value=None, name="output")]
 
 	#determine cost function
 	cost = net.cost(y) + L2_REG * net.L2_sqr
@@ -267,12 +297,13 @@ if __name__ == "__main__":
 	parser.add_option("-m", "--modelname", dest="model_name", default=None, help="output model filename", type="string")
 	parser.add_option("-d", "--datadir", dest="data_dir", default=None, help="Data directory with training/testing/development sets, vocabulary and corpus metadata pickle files", type="string")
 	parser.add_option("-n", "--hiddensize", dest="num_hidden", default=100, help="hidden layer size", type="string")
-	#parser.add_option("-o", "--paramhiddensize", dest="num_hidden_params", default=10, help="params hidden layer size", type="string")
 	parser.add_option("-l", "--learningrate", dest="learning_rate", default=0.05, help="hidden layer size", type="string")
 	parser.add_option("-f", "--input_features", dest="input_features", default=[], help="semitone features to train with", type="string", action='append')
 	parser.add_option("-r", "--reduced_punctuation", dest="reduced_punctuation", default=True, help="Use reduced punctuation vocabulary", action="store_true")
 	parser.add_option("-s", "--sample_size", dest="sample_size", default=50, help="Sample sequence length for batch processing")
 	parser.add_option("-b", "--batch_size", dest="batch_size", default=128, help="Batch size for training")
+	parser.add_option("-p", "--params_file", dest="params_filename", default=None, help="params filename", type="string")
+	parser.add_option("-t", "--build_on_stage_1", dest="build_on_stage_1", default=None, help="Use two stage approach. Input stage 1 model", type="string")
 
 	(options, args) = parser.parse_args()
 	main(options)

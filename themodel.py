@@ -82,7 +82,60 @@ class GRULayer(object):
 
         return h_t
 
-def load(file_path, minibatch_size):
+def load_stage2(file_path, minibatch_size, stage1_model_file_name):
+	import themodel
+	import _pickle
+	import theano
+	import numpy as np
+
+	with open(file_path, 'rb') as f:
+		state = _pickle.load(f)
+
+	Model = getattr(themodel, state["type"])
+	print(Model)
+
+	rng = np.random
+	rng.set_state(state["random_state"])
+
+	stage1_net, stage1_inputs, stage1_input_feature_names, _ = load(stage1_model_file_name, minibatch_size)
+	x_tensor = stage1_inputs[0]
+
+	for tensor_info in state["input_tensors_info"]:
+		if tensor_info['name'] == "word":
+			#x_tensor = T.imatrix(tensor_info['name'])
+			x_PuncTensor_num_hidden = tensor_info['size_hidden']
+			x_PuncTensor_size_emb=tensor_info['size_emb']
+			x_vocabulary_size = tensor_info['vocabulary_size']
+		elif tensor_info['name'] == "pause_before":
+			p_tensor = T.matrix(tensor_info['name'])
+			p_PuncTensor_num_hidden = tensor_info['size_hidden']
+
+	x_PuncTensor = PuncTensor(name="word", tensor=x_tensor, size_hidden=x_PuncTensor_num_hidden, size_emb=x_PuncTensor_size_emb, vocabularized=True, vocabulary_size=x_vocabulary_size, bidirectional=True)
+	p_PuncTensor = PuncTensor(name="pause_before", tensor=p_tensor, size_hidden=p_PuncTensor_num_hidden, size_emb=1, vocabularized=False, bidirectional=False)
+
+	input_PuncTensors = [x_PuncTensor, p_PuncTensor]
+	input_feature_names = ["word", "pause_before"]
+
+	net = Model(rng=rng,
+				y_vocabulary_size=state["y_vocabulary_size"],
+				minibatch_size=minibatch_size,
+				num_hidden_output=state["num_hidden_output"],
+				x_PuncTensor=x_PuncTensor,
+				p_PuncTensor=p_PuncTensor,
+				stage1_net=stage1_net,
+				stage1_inputs=stage1_inputs,
+				stage1_input_feature_names=stage1_input_feature_names)
+
+	for net_param, state_param in zip(net.params, state["params"]):
+		net_param.set_value(state_param, borrow=True)
+
+	gsums = [theano.shared(gsum) for gsum in state["gsums"]] if state["gsums"] else None
+
+	tensors = [i.tensor for i in input_PuncTensors]
+
+	return net, tensors, input_feature_names, (gsums, state["learning_rate"], state["validation_ppl_history"], state["epoch"], rng)
+	
+def load(file_path, minibatch_size, first_stage_file=None):
 	import themodel
 	import _pickle
 	import theano
@@ -98,8 +151,8 @@ def load(file_path, minibatch_size):
 	rng.set_state(state["random_state"])
 
 	input_PuncTensors = []
-	inputs = []
 	input_feature_names = []
+
 	for tensor_info in state["input_tensors_info"]:
 		input_feature_names.append(tensor_info['name'])
 		if tensor_info['bidirectional']:
@@ -110,10 +163,11 @@ def load(file_path, minibatch_size):
 			tensor = T.imatrix(tensor_info['name'])
 			vocabulary_size = tensor_info['vocabulary_size']
 			feature_PuncTensor = PuncTensor(name=tensor_info['name'], tensor=tensor, size_hidden=tensor_info['size_hidden'], size_emb=tensor_info['size_emb'], vocabularized=True, vocabulary_size=tensor_info['vocabulary_size'], bidirectional=is_bidi)
+			print("loaded %s"%feature_PuncTensor.name)
 		else:
 			tensor = T.matrix(tensor_info['name'])
 			feature_PuncTensor = PuncTensor(name=tensor_info['name'], tensor=tensor, size_hidden=tensor_info['size_hidden'], size_emb=tensor_info['size_emb'], vocabularized=False, vocabulary_size=tensor_info['vocabulary_size'], bidirectional=is_bidi)
-		inputs += tensor
+			print("loaded %s"%feature_PuncTensor.name)
 		input_PuncTensors.append(feature_PuncTensor)
 
 	net = Model(rng=rng,
@@ -131,7 +185,6 @@ def load(file_path, minibatch_size):
 	tensors = [i.tensor for i in input_PuncTensors]
 
 	return net, tensors, input_feature_names, (gsums, state["learning_rate"], state["validation_ppl_history"], state["epoch"], rng)
-	# return net
 
 class PuncTensor(object):
 	def __init__(self, name, tensor=None, size_hidden=0, size_emb=1, vocabularized=False, vocabulary_size = 0,  bidirectional=False):
@@ -144,7 +197,9 @@ class PuncTensor(object):
 		self.size_hidden = size_hidden
 		self.size_emb = size_emb
 
-		self.GRUs = []
+		#self.GRUs = []
+		self.GRU_forward = None
+		self.GRU_backward = None
 
 		self.We = None
 
@@ -153,15 +208,11 @@ class PuncTensor(object):
 			self.We = weights_Glorot(self.vocabulary_size, self.size_emb, 'We_' + self.name, rng)
 
 		total_n_out = 0
+		self.GRU_forward = GRULayer(rng=rng, n_in=self.size_emb, n_out=self.size_hidden, minibatch_size=minibatch_size)
 		if self.bidirectional:
-			forward_layer = GRULayer(rng=rng, n_in=self.size_emb, n_out=self.size_hidden, minibatch_size=minibatch_size)
-			backward_layer = GRULayer(rng=rng, n_in=self.size_emb, n_out=self.size_hidden, minibatch_size=minibatch_size)
-			self.GRUs.append(forward_layer)
-			self.GRUs.append(backward_layer)
+			self.GRU_backward = GRULayer(rng=rng, n_in=self.size_emb, n_out=self.size_hidden, minibatch_size=minibatch_size)
 			total_n_out += self.size_hidden * 2
 		else:
-			unidirectional_layer = GRULayer(rng=rng, n_in=self.size_emb, n_out=self.size_hidden, minibatch_size=minibatch_size)
-			self.GRUs.append(unidirectional_layer)
 			total_n_out += self.size_hidden
 
 		return total_n_out
@@ -220,13 +271,13 @@ class GRU_parallel(object):
 		self.params += [self.Wy, self.by,
                         self.Wa_h, self.Wa_c, self.ba, self.Wa_y,
                         self.Wf_h, self.Wf_c, self.Wf_f, self.bf]
+		self.params += self.GRU.params
 		for tensor in self.used_input_tensors:
 			if tensor.bidirectional:
-				self.params += tensor.GRUs[0].params
-				self.params += tensor.GRUs[1].params
+				self.params += tensor.GRU_forward.params
+				self.params += tensor.GRU_backward.params
 			else:
-				self.params += tensor.GRUs[0].params
-
+				self.params += tensor.GRU_forward.params
 		# recurrence functions
 		def output_recurrence(x_t, h_tm1, Wa_h, Wa_y, Wf_h, Wf_c, Wf_f, bf, Wy, by, context, projected_context):
 			# Attention model
@@ -270,19 +321,19 @@ class GRU_parallel(object):
 				x = tensor.tensor.flatten().reshape((tensor.tensor.shape[0], minibatch_size, 1))
 
 			if tensor.bidirectional:
-				bidi_input_recurrence = create_bidi(tensor.GRUs[0], tensor.GRUs[1])
+				bidi_input_recurrence = create_bidi(tensor.GRU_forward, tensor.GRU_backward)
 
 				[h_f_t, h_b_t], _ = theano.scan(fn=bidi_input_recurrence,
 		            sequences=[x, x[::-1]], # forward and backward sequences
-		            outputs_info=[tensor.GRUs[0].h0, tensor.GRUs[1].h0])
+		            outputs_info=[tensor.GRU_forward.h0, tensor.GRU_backward.h0])
 
 				concatenated_input_tensors += [h_f_t, h_b_t[::-1]]
 			else:
-				unidi_input_recurrence = create_unidi(tensor.GRUs[0])
+				unidi_input_recurrence = create_unidi(tensor.GRU_forward)
 
 				h_p_t, _ = theano.scan(fn=unidi_input_recurrence,
 		        	sequences=[x],
-		        	outputs_info=[tensor.GRUs[0].h0])
+		        	outputs_info=[tensor.GRU_forward.h0])
 
 				concatenated_input_tensors += [h_p_t]
 
@@ -324,3 +375,44 @@ class GRU_parallel(object):
 
 		with open(file_path, 'wb') as f:
 			_pickle.dump(state, f)
+
+class GRU_stage2(GRU_parallel):
+	def __init__(self, rng, y_vocabulary_size, minibatch_size, num_hidden_output, x_PuncTensor, p_PuncTensor, stage1_net, stage1_inputs, stage1_input_feature_names):
+		self.used_input_tensors = [x_PuncTensor, p_PuncTensor]
+		x = x_PuncTensor.tensor
+		p = p_PuncTensor.tensor
+
+		self.stage1_net = stage1_net
+
+		self.vocabularized_feature_names = [x_PuncTensor.name]
+		self.y_vocabulary_size = y_vocabulary_size
+		self.input_feature_names = [x_PuncTensor.name, p_PuncTensor.name]
+		self.num_hidden_output = num_hidden_output
+
+		# output model
+		self.GRU = GRULayer(rng=rng, n_in=self.stage1_net.num_hidden_output + 1, n_out=num_hidden_output, minibatch_size=minibatch_size)
+		self.Wy = weights_const(num_hidden_output, y_vocabulary_size, 'Wy', 0)
+		self.by = weights_const(1, y_vocabulary_size, 'by', 0)
+
+		self.params = [self.Wy, self.by]
+		self.params += self.GRU.params
+
+		def recurrence(x_t, p_t, h_tm1, Wy, by):
+
+			h_t = self.GRU.step(x_t=T.concatenate((x_t, p_t.dimshuffle((0, 'x'))), axis=1), h_tm1=h_tm1)
+
+			z = T.dot(h_t, Wy) + by
+			y_t = T.nnet.softmax(z)
+
+			return [h_t, y_t]
+
+		[_, self.y], _ = theano.scan(fn=recurrence,
+									 sequences=[self.stage1_net.last_hidden_states, p],
+									 non_sequences=[self.Wy, self.by],
+									 outputs_info=[self.GRU.h0, None])
+
+		print("Number of parameters is %d" % sum(np.prod(p.shape.eval()) for p in self.params))
+		print("Number of parameters with stage1 params is %d" % sum(np.prod(p.shape.eval()) for p in self.params + self.stage1_net.params))
+
+		self.L1 = sum(abs(p).sum() for p in self.params)
+		self.L2_sqr = sum((p**2).sum() for p in self.params)
