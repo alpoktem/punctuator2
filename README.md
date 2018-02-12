@@ -28,7 +28,8 @@ These scores are obtained with a model trained with leveled pause duration and m
 
 Data directory (path `$datadir`) should look like the output folder (`sample_ted_punc_data`) in https://github.com/alpoktem/ted_preprocess. Word vocabulary list and sampled training/testing/development sets are stored here.
 
-* Training:
+### Training
+
 Training is done on sequenced data stored in `train_samples` under `$datadir`. 
 
 Dataset features to train with are given with the flag `-f`. Other training parameters are specified through the `parameters.yaml` file.
@@ -38,7 +39,8 @@ To train with word, pause, POS and mean f0:
 
 `python main.py -m $modelId -d $datadir -f word -f pause_before -f pos -f f0_mean -p parameters.yaml`
 
-* Testing:
+### Testing
+
 Testing is done on proscript data using `punctuator.py`. Either single `<input-file>` or `<input-directory>` is given as input using `-i` or `-d` respectively. Even if there's punctuation information on this data, it is ignored. Predictions for each file in the `$test_samples` directory are put into `$out_preditions` directory. Input files should contain the parameters that the model was trained with. 
 
 `model_name="Model_single-stage_""$modelId""_h100_lr0.05.pcl"`
