@@ -1,36 +1,48 @@
 # punkProse
 
-Punctuation generation for speech transcripts using lexical and prosodic features. 
+Punctuation generation for speech transcripts using lexical, syntactic and prosodic features. 
 
-Modification on forked repository (by reducing training to one stage and addition of more word-level prosodic features) . 
+Modification on forked repository (by reducing training to one stage and addition of more word-level prosodic features) . This version lets use any combination of word-aligned features. 
 
-For example data and extraction scripts see: https://github.com/alpoktem/ted_preprocess
+Prosodically annotated files are in proscript format (https://github.com/alpoktem/proscript). For example data and extraction scripts see: https://github.com/alpoktem/ted_preprocess
+
+* How does it perform?
+On prosodically annotated TED corpus consisting of 1038 talks: 
+
+PUNCTUATION      | PRECISION | RECALL    | F-SCORE
+--- | --- | --- | ---
+,COMMA           | 61.3 | 48.9 | 54.4
+?QUESTIONMARK    | 71.8 | 70.6 | 71.2
+.PERIOD          | 82.6 | 83.5 | 83.0
+_Overall_        | _73.7_ | _67.3_ | _70.3_
+
+These scores are obtained with a model trained with leveled pause duration and mean f0 features together with word and POS tags. 
 
 ## Example Run
-Data directory (path `$datadir`) should look like the output folder (sample_ted_punc_data) in https://github.com/alpoktem/ted_preprocess. Word vocabulary list and sampled training/testing/development sets are stored here.
+* Requirements: 
+	- Python 3.x
+	- Numpy
+	- Theano
+	- yaml 
+
+Data directory (path `$datadir`) should look like the output folder (`sample_ted_punc_data`) in https://github.com/alpoktem/ted_preprocess. Word vocabulary list and sampled training/testing/development sets are stored here.
 
 * Training:
 Training is done on sequenced data stored in `train_samples` under `$datadir`. 
 
-- Parameters used in example run below: 
-	- Prosodic features pause + two semitone feature (f0 range, intensity range), 
-	- output: reduced punctuation set (comma, period, question_mark)
-	- hidden layer/word embeddings size:100
-	- param hidden layer/embeddings size: 10
-	- learning rate:0.05
-	- maximum sample size (words in one sample) : 50 
-	- Batch size: 128
+Dataset features to train with are given with the flag `-f`. Other training parameters are specified through the `parameters.yaml` file.
+To train with word, pause, POS and mean f0:
 
-`modelId="mod_rangeF0-rangeI0"`
+`modelId="mod_word-pause-pos-mf0"`
 
-`python main.py -m $modelId -n 100 -o 10 -l 0.05 -d $datadir -p -f range_f0 -f range_i0 -r -s 50 -b 128`
+`python main.py -m $modelId -d $datadir -f word -f pause_before -f pos -f f0_mean -p parameters.yaml`
 
 * Testing:
-Testing is done on proscript data using `punctuator.py`. Either single `<input-file>` or `<input-directory>` is given as input using `-i` or `-d` respectively. Even if there's punctuation information on this data, it is ignored. Predictions for each file in the `$test_samples` directory are put into `$out_preditions` directory.
+Testing is done on proscript data using `punctuator.py`. Either single `<input-file>` or `<input-directory>` is given as input using `-i` or `-d` respectively. Even if there's punctuation information on this data, it is ignored. Predictions for each file in the `$test_samples` directory are put into `$out_preditions` directory. Input files should contain the parameters that the model was trained with. 
 
 `model_name="Model_single-stage_""$modelId""_h100_lr0.05.pcl"`
 
-`python punctuator.py -m Model_single-stage_mod_rangeF0-rangeI0_h100_lr0.05.pcl -v <word-vocabulary-file> -d $test_samples -o $out_predictions -p -f range_f0 -f range_i0`
+`python punctuator.py -m Model_single-stage_mod_word-pause-pos-mf0_h100_lr0.05.pcl -d $test_samples -o $out_predictions`
 
 * Scoring testing output:
 Predictions are compared with groundtruth data using `error_calculator.py`. It either takes two files to compare or two directories containing groundtruth/prediction files. Use `-r` for reducing punctuation marks. 

@@ -1,0 +1,38 @@
+# Data directory with subdirectories "train_samples", "dev_samples" and "test_samples" and "test_groundtruth".
+DATA_DIR: /Users/alp/Desktop/ted_data/data_260118
+FEATURE_VOCABULARIES: # vocabulary files of vocabularized features. files should be in the DATA_DIR
+  word: vocabulary.txt
+  pos: pos_vocabulary.txt
+OUTPUT_LABEL: punctuation_before #label in the data to predict
+NUM_HIDDEN_OUTPUT: 100 #Output hidden layer size
+FEATURE_NUM_HIDDEN: #Hidden layer size of each feature layer
+  word: 100
+  pos: 10
+  pause_before: 2
+  pause_before_norm: 2
+  f0_mean: 100
+  f0_range: 100
+  f0_birange: 100
+  f0_sd: 100
+  i0_mean: 100
+  i0_range: 100
+  i0_birange: 100
+  i0_sd: 100
+  speech_rate_norm: 100
+FEATURE_EMB_SIZE:  #embedded vector size of vocabularized features
+  word: 100
+  pos: 10
+BIDIRECTIONAL_FEATURES: #features to train bidirectionally
+  - word
+  - f0_mean
+  - i0_mean
+LEVELED_FEATURES: #prosodic features discretization is made with a text file with the levels listed. 
+  # pause_before: level_info/pause_levels_100.txt
+  # f0_mean: level_info/semitone_levels_100.txt
+  # f0_range: level_info/semitone_levels_100.txt
+  # i0_mean: level_info/semitone_levels_100.txt
+  # i0_range: level_info/semitone_levels_100.txt
+  # speech_rate_norm: level_info/sr_levels_100.txt
+LEARNING_RATE: 0.05 #learning rate
+BATCH_SIZE: 128 #batch size
+SAMPLE_SIZE: 50 #maximum sequence size in the dataset. Samples with size less than 50 are padded with empty tokens. 

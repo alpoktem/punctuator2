@@ -11,7 +11,7 @@ import os
 from utilities import reducePunc, END, SPACE
 from optparse import OptionParser
 
-PUNCTUATION_VOCABULARY = {SPACE, ",", ".", "?", "!", "-", ";", ":"}
+PUNCTUATION_VOCABULARY = {SPACE, ",", ".", "?", "!", "-", ";", ":", "..."}
 
 def compute_error(target_paths, predicted_paths, reduce_punctuation):
     counter = 0
@@ -27,6 +27,9 @@ def compute_error(target_paths, predicted_paths, reduce_punctuation):
     false_negatives = {}
 
     for target_path, predicted_path in zip(target_paths, predicted_paths):
+        if not os.path.basename(target_path) == os.path.basename(predicted_path):
+            print("Files don't match. \n %s \n %s"%(target_path, predicted_path))
+            continue
 
         target_punctuation = SPACE
         predicted_punctuation = SPACE
@@ -36,8 +39,9 @@ def compute_error(target_paths, predicted_paths, reduce_punctuation):
 
         with codecs.open(target_path, 'r', 'utf-8') as target, codecs.open(predicted_path, 'r', 'utf-8') as predicted:
 
-            target_stream = target.read().split() + [END]
-            predicted_stream = predicted.read().split() + [END]
+            target_stream = target.read().lower().split() + [END]
+            predicted_stream = predicted.read().lower().split() + [END]
+
             # print("TARGET")
             # print(target_stream)
             # print("PREDICTED")
@@ -105,8 +109,8 @@ def compute_error(target_paths, predicted_paths, reduce_punctuation):
     overall_fp = 0.0
     overall_fn = 0.0
 
-    print "-"*46
-    print "{:<16} {:<9} {:<9} {:<9}".format('PUNCTUATION','PRECISION','RECALL','F-SCORE')
+    print("-"*46)
+    print("{:<16} {:<9} {:<9} {:<9}".format('PUNCTUATION','PRECISION','RECALL','F-SCORE'))
     for p in PUNCTUATION_VOCABULARY:
 
         if p == SPACE:
@@ -120,14 +124,14 @@ def compute_error(target_paths, predicted_paths, reduce_punctuation):
         precision = (true_positives.get(p,0.) / (true_positives.get(p,0.) + false_positives[p])) if p in false_positives else nan
         recall = (true_positives.get(p,0.) / (true_positives.get(p,0.) + false_negatives[p])) if p in false_negatives else nan
         f_score = (2. * precision * recall / (precision + recall)) if (precision + recall) > 0 else nan        
-        print "{:<16} {:<9} {:<9} {:<9}".format(punctuation, round(precision,3)*100, round(recall,3)*100, round(f_score,3)*100)
-    print "-"*46
+        print("{:<16} {:<9} {:<9} {:<9}".format(punctuation, round(precision,3)*100, round(recall,3)*100, round(f_score,3)*100))
+    print("-"*46)
     pre = overall_tp/(overall_tp+overall_fp) if overall_fp else nan
     rec = overall_tp/(overall_tp+overall_fn) if overall_fn else nan
     f1 = (2.*pre*rec)/(pre+rec) if (pre + rec) else nan
-    print "{:<16} {:<9} {:<9} {:<9}".format("Overall", round(pre,3)*100, round(rec,3)*100, round(f1,3)*100)
-    print "Err: %s%%" % round((100.0 - float(total_correct) / float(counter-1) * 100.0), 2)
-    print "SER: %s%%" % round((substitutions + deletions + insertions) / (correct + substitutions + deletions) * 100, 1)
+    print("{:<16} {:<9} {:<9} {:<9}".format("Overall", round(pre,3)*100, round(rec,3)*100, round(f1,3)*100))
+    print("Err: %s%%" % round((100.0 - float(total_correct) / float(counter-1) * 100.0), 2))
+    print("SER: %s%%" % round((substitutions + deletions + insertions) / (correct + substitutions + deletions) * 100, 1))
 
 def main(options):
 
@@ -143,7 +147,9 @@ def main(options):
 
     if os.path.isdir(target_path) and os.path.isdir(predicted_path):
         target_paths = [os.path.join(target_path, f) for f in os.listdir(target_path)]
+        target_paths.sort()
         predicted_paths = [os.path.join(predicted_path, f) for f in os.listdir(predicted_path)]
+        predicted_paths.sort()
     else:
         target_paths = [target_path]
         predicted_paths = [predicted_path]
