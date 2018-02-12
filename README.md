@@ -6,7 +6,8 @@ Modification on forked repository (by reducing training to one stage and additio
 
 Prosodically annotated files are in proscript format (https://github.com/alpoktem/proscript). For example data and extraction scripts see: https://github.com/alpoktem/ted_preprocess
 
-* How does it perform?
+## How does it perform?
+
 On prosodically annotated TED corpus consisting of 1038 talks (155174 sentences): 
 
 PUNCTUATION      | PRECISION | RECALL    | F-SCORE
