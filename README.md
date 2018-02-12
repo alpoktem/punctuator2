@@ -7,13 +7,13 @@ Modification on forked repository (by reducing training to one stage and additio
 Prosodically annotated files are in proscript format (https://github.com/alpoktem/proscript). For example data and extraction scripts see: https://github.com/alpoktem/ted_preprocess
 
 * How does it perform?
-On prosodically annotated TED corpus consisting of 1038 talks: 
+On prosodically annotated TED corpus consisting of 1038 talks (155174 sentences): 
 
 PUNCTUATION      | PRECISION | RECALL    | F-SCORE
 --- | --- | --- | ---
-,COMMA           | 61.3 | 48.9 | 54.4
-?QUESTIONMARK    | 71.8 | 70.6 | 71.2
-.PERIOD          | 82.6 | 83.5 | 83.0
+Comma (,)           | 61.3 | 48.9 | 54.4
+Question Mark    | 71.8 | 70.6 | 71.2
+Period  (.)        | 82.6 | 83.5 | 83.0
 _Overall_        | _73.7_ | _67.3_ | _70.3_
 
 These scores are obtained with a model trained with leveled pause duration and mean f0 features together with word and POS tags. 
@@ -51,7 +51,9 @@ Predictions are compared with groundtruth data using `error_calculator.py`. It e
 
 ## Citing
 
-This work is published as:
+More details can be found in the publication: https://link.springer.com/chapter/10.1007/978-3-319-68456-7_11
+
+This work can be cited as:
 
 	@inproceedings{punkProse,
 		author = {Alp Oktem and Mireia Farrus and Leo Wanner},
