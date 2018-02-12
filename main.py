@@ -116,13 +116,13 @@ def main(options):
 	batch_size = int(config["BATCH_SIZE"])
 	sample_size = int(config["SAMPLE_SIZE"])
 	output_label = config["OUTPUT_LABEL"]
+	data_dir = config["DATA_DIR"]
 	input_feature_names = options.input_features
 	vocabulary_dict = {}
 	leveler_dict = {}
 	no_of_levels_dict = {}
 
-	if checkArgument(options.data_dir, isDir=True):
-		data_dir = options.data_dir
+	if checkArgument(data_dir, isDir=True):
 		TRAINING_SAMPLES_DIR = os.path.join(data_dir, "train_samples")
 		if not checkArgument(TRAINING_SAMPLES_DIR, isDir=True):
 			sys.exit("TRAINING dir missing!")
@@ -134,9 +134,9 @@ def main(options):
 
 	if options.build_on_stage_1:
 		stage1_model_file_name = options.build_on_stage_1
-		model_file_name = "Model_stage-2_%s_h%d_lr%s.pcl"%(model_name, num_hidden, learning_rate)
+		model_file_name = "Model_stage-2_%s.pcl"%(model_name)
 	else:
-		model_file_name = "Model_single-stage_%s_h%d_lr%s.pcl"%(model_name, num_hidden, learning_rate)
+		model_file_name = "Model_single-stage_%s.pcl"%(model_name)
 
 	#check if model with name already exists
 	if checkArgument(model_file_name, isFile=True):

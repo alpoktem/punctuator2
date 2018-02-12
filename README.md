@@ -2,7 +2,7 @@
 
 Punctuation generation for speech transcripts using lexical, syntactic and prosodic features. 
 
-Modification on forked repository (by reducing training to one stage and addition of more word-level prosodic features) . This version lets use any combination of word-aligned features. 
+Modification on forked repository (by reducing training to one stage and addition of more word-level prosodic features). This version lets use any combination of word-aligned features. 
 
 Prosodically annotated files are in proscript format (https://github.com/alpoktem/proscript). For example data and extraction scripts see: https://github.com/alpoktem/ted_preprocess
 
@@ -13,7 +13,7 @@ On prosodically annotated TED corpus consisting of 1038 talks (155174 sentences)
 PUNCTUATION      | PRECISION | RECALL    | F-SCORE
 --- | --- | --- | ---
 Comma (,)           | 61.3 | 48.9 | 54.4
-Question Mark    | 71.8 | 70.6 | 71.2
+Question Mark (?)   | 71.8 | 70.6 | 71.2
 Period  (.)        | 82.6 | 83.5 | 83.0
 _Overall_        | _73.7_ | _67.3_ | _70.3_
 
@@ -26,7 +26,9 @@ These scores are obtained with a model trained with leveled pause duration and m
 	- Theano
 	- yaml 
 
-Data directory (path `$datadir`) should look like the output folder (`sample_ted_punc_data`) in https://github.com/alpoktem/ted_preprocess. Word vocabulary list and sampled training/testing/development sets are stored here.
+Data directory (path `$datadir`) should look like the output folder (`sample_ted_punc_data`) in https://github.com/alpoktem/ted_preprocess. Vocabularies and sampled training/testing/development sets are stored here. 
+
+Sample run explained here is provided in `run.sh`.
 
 ### Training
 
@@ -37,7 +39,7 @@ To train with word, pause, POS and mean f0:
 
 `modelId="mod_word-pause-pos-mf0"`
 
-`python main.py -m $modelId -d $datadir -f word -f pause_before -f pos -f f0_mean -p parameters.yaml`
+`python main.py -m $modelId -f word -f pause_before -f pos -f f0_mean -p parameters.yaml`
 
 ### Testing
 
@@ -47,7 +49,7 @@ Testing is done on proscript data using `punctuator.py`. Either single `<input-f
 
 `python punctuator.py -m Model_single-stage_mod_word-pause-pos-mf0_h100_lr0.05.pcl -d $test_samples -o $out_predictions`
 
-* Scoring testing output:
+### Scoring the testing output:
 Predictions are compared with groundtruth data using `error_calculator.py`. It either takes two files to compare or two directories containing groundtruth/prediction files. Use `-r` for reducing punctuation marks. 
 
 `python error_calculator.py -g $groundtruthData -p $out_predictions -r`
