@@ -26,7 +26,7 @@ These scores are obtained with a model trained with leveled pause duration and m
 	- Theano
 	- yaml 
 
-Data directory (path `$datadir`) should look like the output folder (`sample_ted_punc_data`) in https://github.com/alpoktem/ted_preprocess. Vocabularies and sampled training/testing/development sets are stored here. 
+Data directory (path `$datadir`) should look like the output folder (`data/corpus`) in https://github.com/alpoktem/ted_preprocess. Vocabularies and sampled training/testing/development sets are stored here. 
 
 Sample run explained here is provided in `run.sh`.
 
