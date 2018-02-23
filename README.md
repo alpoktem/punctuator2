@@ -8,7 +8,9 @@ Prosodically annotated files are in proscript format (https://github.com/alpokte
 
 ## How does it perform?
 
-On prosodically annotated TED corpus consisting of 1038 talks (155174 sentences): 
+English punctuation model was trained from a prosodically annotated TED corpus consisting of 1038 talks (155174 sentences). Link to dataset: http://hdl.handle.net/10230/33981
+
+Punctuation generation accuracy with respect to human transcription: 
 
 PUNCTUATION      | PRECISION | RECALL    | F-SCORE
 --- | --- | --- | ---
