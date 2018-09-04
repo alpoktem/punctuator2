@@ -11,72 +11,99 @@ import theano
 import theano.tensor as T
 import numpy as np
 
-def restore_unsequenced_test_data(test_data_path, vocabulary_dict, leveler_dict, predict_function, input_feature_names, sequence_length, output_text=None):
-	proscript_data = read_proscript(test_data_path, add_end=True)
-
+def restore_unsequenced_test_data(proscript_data, vocabulary_dict, leveler_dict, predict_function, input_feature_names, sequence_length, readable_format):	
 	i = 0
-	with codecs.open(output_text, 'w', 'utf-8') as f_out:
-		while True:
-			subsequence_words = proscript_data['word'][i: i + sequence_length - 1]
-			subsequences = {feature_name: proscript_data[feature_name][i: i + sequence_length] for feature_name in input_feature_names if not feature_name in vocabulary_dict.keys()}
-			for feature_name in vocabulary_dict.keys():
-				vocabulary = vocabulary_dict[feature_name]
-				subsequences[feature_name] = [vocabulary.get(w, vocabulary[UNK]) for w in proscript_data[feature_name][i: i + sequence_length]]
-			for feature_name in leveler_dict.keys():
-				get_level_func = leveler_dict[feature_name]
-				subsequences[feature_name] = [get_level_func(v) for v in proscript_data[feature_name][i: i + sequence_length]]
+	punctuated_transcript = ""
+	proscript_data['punctuation_before'] = []
+	proscript_data['punctuation_after'] = []
+	while True:
+		subsequence_words = proscript_data['word'][i: i + sequence_length - 1]
+		subsequences = {feature_name: proscript_data[feature_name][i: i + sequence_length] for feature_name in input_feature_names if not feature_name in vocabulary_dict.keys()}
+		for feature_name in vocabulary_dict.keys():
+			vocabulary = vocabulary_dict[feature_name]
+			subsequences[feature_name] = [vocabulary.get(w, vocabulary[UNK]) for w in proscript_data[feature_name][i: i + sequence_length]]
+		for feature_name in leveler_dict.keys():
+			get_level_func = leveler_dict[feature_name]
+			subsequences[feature_name] = [get_level_func(v) for v in proscript_data[feature_name][i: i + sequence_length]]
 
-			predict_from = [to_array(subsequences[feature_name]) for feature_name in input_feature_names]
-			try:
-				y = predict_function(*predict_from)
-			except:
-				print("fucked")
-				print(subsequence_words)
-
+		predict_from = [to_array(subsequences[feature_name]) for feature_name in input_feature_names]
+		print(input_feature_names)
+		try:
+			y = predict_function(*predict_from)
 			predicted_punctuation_sequence = [0] + [np.argmax(y_t.flatten()) for y_t in y]
-			#print(predicted_punctuation_sequence)
+		except:
+			print("a problem sir")
+			print(subsequence_words)
+			predicted_punctuation_sequence = [0] * len(subsequence_words)
 
-			f_out.write(subsequence_words[0])
+		
+		punc_sequence = [PUNCTUATION_VOCABULARY_LITERAL[i] for i in predicted_punctuation_sequence]
+		proscript_data['punctuation_before'] += punc_sequence
+		
+		# old code. commented out in hyderabad
+		# punctuations = []
+		# for y_t in y:
+		# 	p_i = np.argmax(y_t.flatten())
+		# 	#punctuation = reverse_punctuation_vocabulary[p_i]
+		# 	punctuation = p_i
 
-			last_eos_idx = 0
-			punctuations = []
-			for y_t in y:
+		# 	punctuations.append(punctuation)
 
-				p_i = np.argmax(y_t.flatten())
-				#punctuation = reverse_punctuation_vocabulary[p_i]
-				punctuation = p_i
+		# 	if punctuation in EOS_PUNCTUATION_CODES:
+		# 		last_eos_idx = len(punctuations) # we intentionally want the index of next element
 
-				punctuations.append(punctuation)
+		last_eos_idx = 0
+		for punctuation in punc_sequence:
+			if punctuation in EOS_PUNCTUATION_CODES:
+				last_eos_idx_s = len(punc_sequence) - 1
 
-				if punctuation in EOS_PUNCTUATION_CODES:
-					last_eos_idx = len(punctuations) # we intentionally want the index of next element
+		#Form the punctuated transcript
+		if subsequence_words[-1] == END:
+			step = len(subsequence_words) - 1
+		elif last_eos_idx != 0:
+			step = last_eos_idx
+		else:
+			step = len(subsequence_words) - 1
 
-			if subsequence_words[-1] == END:
-				step = len(subsequence_words) - 1
-			elif last_eos_idx != 0:
-				step = last_eos_idx
-			else:
-				step = len(subsequence_words) - 1
-
-			for j in range(step):
-				if options.readable_format:
-					if punctuations[j] == 0:
-						f_out.write(" ")
-					else:
-						f_out.write(" " + PUNCTUATION_VOCABULARY[punctuations[j]] + " ")
+		punctuated_transcript += subsequence_words[0]
+		for j in range(step):
+			if readable_format:
+				if punc_sequence[j+1] == '':
+					punctuated_transcript += " "
 				else:
-					f_out.write(" " + PUNCTUATION_VOCABULARY[punctuations[j]] + " ")
-				if j < step - 1:
-					try: 
-						f_out.write(subsequence_words[1+j])
-					except:
-						f_out.write("<unk>")
-						print(subsequence_words[1+j])
+					punctuated_transcript += " " + punc_sequence[j+1] + " "
+			else:
+				punctuated_transcript += " " + punc_sequence[j+1] + " "
+			if j < step - 1:
+				try: 
+					punctuated_transcript += subsequence_words[1+j]
+				except:
+					punctuated_transcript += "<unk>"
+					print(subsequence_words[1+j])
 
-			if subsequence_words[-1] == END:
-				break
+		if subsequence_words[-1] == END:
+			break
+		i += step
+	return punctuated_transcript
 
-			i += step
+def load_dictionaries(config, input_feature_names):
+	vocabulary_dict = {}
+	for vocabularized_feature_name in config["FEATURE_VOCABULARIES"]:
+		if vocabularized_feature_name in input_feature_names:
+			VOCAB_FILE = os.path.join(config["DATA_DIR"], config["FEATURE_VOCABULARIES"][vocabularized_feature_name])
+			vocabulary = read_vocabulary(VOCAB_FILE)
+			vocabulary_dict[vocabularized_feature_name] = vocabulary
+
+	leveler_dict = {}
+	if config["LEVELED_FEATURES"]:
+		for feature_name in config["LEVELED_FEATURES"].keys():
+			LEVELS_FILE = os.path.join(config["DATA_DIR"], config["LEVELED_FEATURES"][feature_name])
+			if not checkArgument(LEVELS_FILE, isFile=True):
+				sys.exit("%s levels file missing!"%feature_name)
+			get_level_func, no_of_levels = get_level_maker(LEVELS_FILE)
+			leveler_dict[feature_name] = get_level_func
+
+	return vocabulary_dict, leveler_dict
 
 def main(options):
 	if checkArgument(options.model_file):
@@ -111,24 +138,6 @@ def main(options):
 	else:
 		sys.exit("File or directory to punctuate is missing!")
 
-	vocabulary_dict = {}
-	WORD_VOCAB_FILE = os.path.join(config["DATA_DIR"], config["FEATURE_VOCABULARIES"]["word"])
-	word_vocabulary = read_vocabulary(WORD_VOCAB_FILE)
-	vocabulary_dict['word'] = word_vocabulary
-	
-	POS_VOCAB_FILE = os.path.join(config["DATA_DIR"], config["FEATURE_VOCABULARIES"]["pos"])
-	pos_vocabulary = read_vocabulary(POS_VOCAB_FILE)
-	vocabulary_dict['pos'] = pos_vocabulary
-
-	leveler_dict = {}
-	if config["LEVELED_FEATURES"]:
-		for feature_name in config["LEVELED_FEATURES"].keys():
-			LEVELS_FILE = os.path.join(config["DATA_DIR"], config["LEVELED_FEATURES"][feature_name])
-			if not checkArgument(LEVELS_FILE, isFile=True):
-				sys.exit("%s levels file missing!"%feature_name)
-			get_level_func, no_of_levels = get_level_maker(LEVELS_FILE)
-			leveler_dict[feature_name] = get_level_func
-
 	print("Loading model parameters...")
 	if options.build_on_stage_1:
 		net, inputs, input_feature_names, _ = models.load_stage2(model_file, 1, options.build_on_stage_1)
@@ -141,6 +150,9 @@ def main(options):
 	print("Building model...")
 	predict = theano.function(inputs=inputs, outputs=net.y)
 
+	print("Loading dictionaries...")
+	vocabulary_dict, leveler_dict = load_dictionaries(config, input_feature_names)
+
 	print("Generating punctuation...")
 	if not OUTPUT_DIR == None:
 		#punctuate all proscripts in directory
@@ -151,22 +163,28 @@ def main(options):
 				TEST_FILE = os.path.join(TEST_DIR, sample_filename)
 				TEST_FILE_BASENAME = os.path.splitext(os.path.basename(TEST_FILE))[0]
 				TEST_OUTPUT_FILE = os.path.join(OUTPUT_DIR, "%s.txt"%TEST_FILE_BASENAME)
-				restore_unsequenced_test_data( TEST_FILE,
+				proscript_data = read_proscript(TEST_FILE, add_end=True)
+				punctuated_transcript = restore_unsequenced_test_data( proscript_data,
 										  	   vocabulary_dict=vocabulary_dict,
 										  	   leveler_dict=leveler_dict,
 										  	   predict_function=predict, 
 										  	   input_feature_names=input_feature_names, 
 										  	   sequence_length=config["SAMPLE_SIZE"],
-										  	   output_text=TEST_OUTPUT_FILE)
+								  	   		   readable_format=options.readable_format)
+				with codecs.open(TEST_OUTPUT_FILE, 'w', 'utf-8') as f_out:
+					f_out.write(punctuated_transcript)
 		print("Predictions written to %s"%(OUTPUT_DIR))
 	else:
-		restore_unsequenced_test_data( TEST_FILE,
+		proscript_data = read_proscript(TEST_FILE, add_end=True)
+		punctuated_transcript = restore_unsequenced_test_data( proscript_data,
 								  	   vocabulary_dict=vocabulary_dict,
 								  	   leveler_dict=leveler_dict,
 								  	   predict_function=predict, 
 								  	   input_feature_names=input_feature_names, 
 								  	   sequence_length=config["SAMPLE_SIZE"],
-								  	   output_text=OUTPUT_FILE)
+								  	   readable_format=options.readable_format)
+		with codecs.open(OUTPUT_FILE, 'w', 'utf-8') as f_out:
+			f_out.write(punctuated_transcript)
 		print("Predictions written to %s"%OUTPUT_FILE)
 
 if __name__ == "__main__":

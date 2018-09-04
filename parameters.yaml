@@ -1,5 +1,5 @@
 # Data directory with subdirectories "train_samples", "dev_samples" and "test_samples" and "test_groundtruth".
-DATA_DIR: /Users/alp/Desktop/ted_data/data_260118
+DATA_DIR: /Users/alp/Documents/Corpora/ted_data/punkProse_corpus/corpus
 FEATURE_VOCABULARIES: # vocabulary files of vocabularized features. files should be in the DATA_DIR
   word: vocabulary.txt
   pos: pos_vocabulary.txt

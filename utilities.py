@@ -4,12 +4,14 @@ import csv
 import codecs
 import os
 import glob
+import json
 from collections import defaultdict
 
 SPACE = " "
-EMPTY = " "
+EMPTY = ""
 INV_PUNCTUATION_CODES = {EMPTY:0, SPACE:0, ',':1, '.':2, '?':3, '!':4, '-':5, ';':6, ':':7, '...':8, '':0}
 PUNCTUATION_VOCABULARY = {0:SPACE, 1:',', 2:'.', 3:'?', 4:'!', 5:'-', 6:';', 7:':', 8:'...'}
+PUNCTUATION_VOCABULARY_LITERAL = {0:EMPTY, 1:',', 2:'.', 3:'?', 4:'!', 5:'-', 6:';', 7:':', 8:'...'}
 REDUCED_PUNCTUATION_VOCABULARY = {0:SPACE, 1:',', 2:'.', 3:'?'}
 REDUCED_INV_PUNCTUATION_CODES = {EMPTY:0, SPACE:0, ',':1, '.':2, '?':3, '':0}
 EOS_PUNCTUATION_CODES = [2,3,4,5,6,7,8]
@@ -37,8 +39,11 @@ def read_proscript(filename, add_end=False):
 		for row in reader: # read a row as {column1: value1, column2: value2,...}
 			for (k,v) in row.items(): # go over each column name and value 
 				if not k in skip_columns:
-					if "word" in k or "punctuation" in k or "pos" in k:
+					if "word" in k or "punctuation" in k or "pos" in k or "id" in k:
 						columns[k].append(v) # append the value into the appropriate list
+					elif "contour" in k:
+						arr_rep = json.loads(v)
+						columns[k].append(arr_rep)
 					else:
 						try:
 							columns[k].append(float(v)) # real value
@@ -46,10 +51,14 @@ def read_proscript(filename, add_end=False):
 							skip_columns.append(k)
 		if add_end and not columns['word'][-1] == END:
 			for k in columns.keys():
-				if "word" in k or "pos" in k:
+				if k == "id":
+					columns[k].append('end.end99.end99')
+				elif "word" in k:
 					columns[k].append(END)
-				elif "punctuation" in k:
+				elif "punctuation" in k or "pos" in k:
 					columns[k].append("")
+				elif "contour" in k:
+					columns[k].append([0.0])
 				else:
 					columns[k].append(0.0)
 	return columns
