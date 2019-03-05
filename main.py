@@ -20,6 +20,7 @@ MAX_EPOCHS = 50
 L2_REG = 0.0
 CLIPPING_THRESHOLD = 2.0
 PATIENCE_EPOCHS = 1
+ADD_END_TOKEN_TO_PROSCRIPTS_WHILE_READING = True
 
 def get_minibatch(sample_directory, vocabulary_dict, leveler_dict, batch_size, sequence_length, shuffle=False, input_feature_names = [], reduced_punctuation=True, output_label="punctuation_before"):
 	sample_file_list = os.listdir(sample_directory)
@@ -39,7 +40,7 @@ def get_minibatch(sample_directory, vocabulary_dict, leveler_dict, batch_size, s
 	for sample_filename in sample_file_list:
 		proscript_file = os.path.join(sample_directory, sample_filename)
 		try:
-			proscript = read_proscript(proscript_file)
+			proscript = read_proscript(proscript_file, add_end=ADD_END_TOKEN_TO_PROSCRIPTS_WHILE_READING, shift_punc_after_to_before=True)
 		except:
 			print("Couldn't read %s"%proscript_file)
 			continue
@@ -135,11 +136,14 @@ def main(options):
 	if options.build_on_stage_1:
 		stage1_model_file_name = options.build_on_stage_1
 		model_file_name = "Model_stage-2_%s.pcl"%(model_name)
+	elif options.continue_with_previous:
+		model_file_name = "%s_%s.pcl"%(options.continue_with_previous, model_name)
 	else:
 		model_file_name = "Model_single-stage_%s.pcl"%(model_name)
 
 	#check if model with name already exists
 	if checkArgument(model_file_name, isFile=True):
+		print(model_file_name)
 		answer = input("Model with same name exists. Overwrite? (y/n)")
 		if not answer.lower() == "y":
 			sys.exit("Change model name.")
@@ -179,73 +183,83 @@ def main(options):
 	y = T.imatrix('y')
 
 	#build model
-	rng = np.random
-	rng.seed(1)
-	input_PuncTensors = []
-	if options.build_on_stage_1:
-		p = T.matrix('pause_before')
-		stage1_net, stage1_inputs, stage1_input_feature_names, _ = models.load(stage1_model_file_name, batch_size)
-		x = stage1_inputs[0]
+	if options.continue_with_previous:
+		net, input_PuncTensors, input_feature_names, state = models.load(options.continue_with_previous, batch_size)
+		gsums, learning_rate, validation_ppl_history, starting_epoch, rng = state
+		best_ppl = min(validation_ppl_history)
 
-		vocabulary_size = len(vocabulary_dict["word"])
-		x_PuncTensor = PuncTensor(name="word", tensor=x, size_hidden=config["FEATURE_NUM_HIDDEN"]["word"], size_emb=config["FEATURE_EMB_SIZE"]["word"], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=True)
-		p_PuncTensor = PuncTensor(name="pause_before", tensor=p, size_hidden=config["FEATURE_NUM_HIDDEN"]["pause_before"], size_emb=1, vocabularized=False, bidirectional=False)
-		input_PuncTensors.append(x_PuncTensor)
-		input_PuncTensors.append(p_PuncTensor)
-		net = models.GRU_stage2(rng=rng,
-								y_vocabulary_size=y_vocabulary_size, 
-							  	minibatch_size=batch_size, 
-							  	num_hidden_output = num_hidden,
-							  	x_PuncTensor=x_PuncTensor,
-							  	p_PuncTensor=p_PuncTensor, 
-							  	stage1_net=stage1_net,
-							  	stage1_inputs=stage1_inputs,
-							  	stage1_input_feature_names=stage1_input_feature_names)
+		training_inputs = [i for i in input_PuncTensors] + [y, lr]
+		validation_inputs = [i for i in input_PuncTensors] + [y]
+
+		print(input_feature_names)
 	else:
-		for feature_name in input_feature_names:
-			stats = "Training with %s"%feature_name
-			if feature_name in config["BIDIRECTIONAL_FEATURES"]:
-				is_bidi = True
-				stats += " (bidirectional)"
-			else:
-				is_bidi = False
+		rng = np.random
+		rng.seed(1)
+		input_PuncTensors = []
+		if options.build_on_stage_1:
+			p = T.matrix('pause_before')
+			stage1_net, stage1_inputs, stage1_input_feature_names, _ = models.load(stage1_model_file_name, batch_size)
+			x = stage1_inputs[0]
 
-			if feature_name in vocabulary_dict.keys():
-				vocabulary = vocabulary_dict[feature_name]
-				stats += " (vocabulary size: %i)"%len(vocabulary)
-				stats += " (embedded size: %i)"%config["FEATURE_EMB_SIZE"][feature_name]
-				tensor = T.imatrix(feature_name)
-				vocabulary_size = len(vocabulary_dict[feature_name])
-				feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=config["FEATURE_EMB_SIZE"][feature_name], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=is_bidi)
-			elif feature_name in leveler_dict.keys():
-				#get_level_func = leveler_dict[feature_name]
-				no_of_levels = no_of_levels_dict[feature_name]
-				stats += " (%i levels)"%no_of_levels
-				tensor = T.imatrix(feature_name)
-				feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=config["FEATURE_EMB_SIZE"][feature_name], vocabularized=True, vocabulary_size=no_of_levels, bidirectional=is_bidi)
-			else:
-				#continous values
-				stats += " (continous)"
-				tensor = T.matrix(feature_name)
-				feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=1, vocabularized=False, bidirectional=is_bidi)
-			input_PuncTensors.append(feature_PuncTensor)
-			print(stats)
+			vocabulary_size = len(vocabulary_dict["word"])
+			x_PuncTensor = PuncTensor(name="word", tensor=x, size_hidden=config["FEATURE_NUM_HIDDEN"]["word"], size_emb=config["FEATURE_EMB_SIZE"]["word"], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=True)
+			p_PuncTensor = PuncTensor(name="pause_before", tensor=p, size_hidden=config["FEATURE_NUM_HIDDEN"]["pause_before"], size_emb=1, vocabularized=False, bidirectional=False)
+			input_PuncTensors.append(x_PuncTensor)
+			input_PuncTensors.append(p_PuncTensor)
+			net = models.GRU_stage2(rng=rng,
+									y_vocabulary_size=y_vocabulary_size, 
+								  	minibatch_size=batch_size, 
+								  	num_hidden_output = num_hidden,
+								  	x_PuncTensor=x_PuncTensor,
+								  	p_PuncTensor=p_PuncTensor, 
+								  	stage1_net=stage1_net,
+								  	stage1_inputs=stage1_inputs,
+								  	stage1_input_feature_names=stage1_input_feature_names)
+		else:
+			for feature_name in input_feature_names:
+				stats = "Training with %s"%feature_name
+				if feature_name in config["BIDIRECTIONAL_FEATURES"]:
+					is_bidi = True
+					stats += " (bidirectional)"
+				else:
+					is_bidi = False
 
-		net = models.GRU_parallel(rng=rng, 
-								  y_vocabulary_size=y_vocabulary_size, 
-								  minibatch_size=batch_size, 
-								  num_hidden_output = num_hidden,
-								  input_tensors=input_PuncTensors)
+				if feature_name in vocabulary_dict.keys():
+					vocabulary = vocabulary_dict[feature_name]
+					stats += " (vocabulary size: %i)"%len(vocabulary)
+					stats += " (embedded size: %i)"%config["FEATURE_EMB_SIZE"][feature_name]
+					tensor = T.imatrix(feature_name)
+					vocabulary_size = len(vocabulary_dict[feature_name])
+					feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=config["FEATURE_EMB_SIZE"][feature_name], vocabularized=True, vocabulary_size=vocabulary_size, bidirectional=is_bidi)
+				elif feature_name in leveler_dict.keys():
+					#get_level_func = leveler_dict[feature_name]
+					no_of_levels = no_of_levels_dict[feature_name]
+					stats += " (%i levels)"%no_of_levels
+					tensor = T.imatrix(feature_name)
+					feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=config["FEATURE_EMB_SIZE"][feature_name], vocabularized=True, vocabulary_size=no_of_levels, bidirectional=is_bidi)
+				else:
+					#continous values
+					stats += " (continous)"
+					tensor = T.matrix(feature_name)
+					feature_PuncTensor = PuncTensor(name=feature_name, tensor=tensor, size_hidden=config["FEATURE_NUM_HIDDEN"][feature_name], size_emb=1, vocabularized=False, bidirectional=is_bidi)
+				input_PuncTensors.append(feature_PuncTensor)
+				print(stats)
 
-	starting_epoch = 0
-	best_ppl = np.inf
-	validation_ppl_history = []
+			net = models.GRU_parallel(rng=rng, 
+									  y_vocabulary_size=y_vocabulary_size, 
+									  minibatch_size=batch_size, 
+									  num_hidden_output = num_hidden,
+									  input_tensors=input_PuncTensors)
 
-	gsums = [theano.shared(np.zeros_like(param.get_value(borrow=True))) for param in net.params]
+		starting_epoch = 0
+		best_ppl = np.inf
+		validation_ppl_history = []
 
-	#assign inputs
-	training_inputs = [i.tensor for i in input_PuncTensors] + [y, lr]
-	validation_inputs = [i.tensor for i in input_PuncTensors] + [y]
+		gsums = [theano.shared(np.zeros_like(param.get_value(borrow=True))) for param in net.params]
+
+		#assign inputs
+		training_inputs = [i.tensor for i in input_PuncTensors] + [y, lr]
+		validation_inputs = [i.tensor for i in input_PuncTensors] + [y]
 
 	#determine cost function
 	cost = net.cost(y) + L2_REG * net.L2_sqr
@@ -322,13 +336,11 @@ if __name__ == "__main__":
 	usage = "usage: %prog [-s infile] [option]"
 	parser = OptionParser(usage=usage)
 	parser.add_option("-m", "--modelname", dest="model_name", default=None, help="output model filename", type="string")
-	parser.add_option("-d", "--datadir", dest="data_dir", default=None, help="Data directory with training/testing/development sets, vocabulary and corpus metadata pickle files", type="string")
-	parser.add_option("-n", "--hiddensize", dest="num_hidden", default=100, help="hidden layer size", type="string")
-	parser.add_option("-l", "--learningrate", dest="learning_rate", default=0.05, help="hidden layer size", type="string")
 	parser.add_option("-f", "--input_features", dest="input_features", default=[], help="semitone features to train with", type="string", action='append')
 	parser.add_option("-r", "--reduced_punctuation", dest="reduced_punctuation", default=True, help="Use reduced punctuation vocabulary", action="store_true")
 	parser.add_option("-p", "--params_file", dest="params_filename", default=None, help="params filename", type="string")
 	parser.add_option("-t", "--build_on_stage_1", dest="build_on_stage_1", default=None, help="Use two stage approach. Input stage 1 model", type="string")
+	parser.add_option("-c", "--continue_with_previous", dest="continue_with_previous", default=None, help="Continue training from model", type="string")
 
 	(options, args) = parser.parse_args()
 	main(options)

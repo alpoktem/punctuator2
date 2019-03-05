@@ -1,4 +1,4 @@
-dataset='/Users/alp/Desktop/ted_data/data_260118'
+dataset='/Users/alp/Documents/Corpora/ted_data/punkProse_corpus/corpus'
 
 modelid="wPOSpmf" 
 python main.py -m $modelid -f word -f pos -f pause_before -f f0_mean -p parameters.yaml

@@ -27,7 +27,7 @@ def restore_unsequenced_test_data(proscript_data, vocabulary_dict, leveler_dict,
 			subsequences[feature_name] = [get_level_func(v) for v in proscript_data[feature_name][i: i + sequence_length]]
 
 		predict_from = [to_array(subsequences[feature_name]) for feature_name in input_feature_names]
-		print(input_feature_names)
+		#print(input_feature_names)
 		try:
 			y = predict_function(*predict_from)
 			predicted_punctuation_sequence = [0] + [np.argmax(y_t.flatten()) for y_t in y]

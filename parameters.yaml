@@ -22,6 +22,8 @@ FEATURE_NUM_HIDDEN: #Hidden layer size of each feature layer
 FEATURE_EMB_SIZE:  #embedded vector size of vocabularized features
   word: 100
   pos: 10
+  pause_before: 10
+  f0_mean: 10
 BIDIRECTIONAL_FEATURES: #features to train bidirectionally
   - word
   - f0_mean

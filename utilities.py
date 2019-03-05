@@ -10,7 +10,7 @@ from collections import defaultdict
 SPACE = " "
 EMPTY = ""
 INV_PUNCTUATION_CODES = {EMPTY:0, SPACE:0, ',':1, '.':2, '?':3, '!':4, '-':5, ';':6, ':':7, '...':8, '':0}
-PUNCTUATION_VOCABULARY = {0:SPACE, 1:',', 2:'.', 3:'?', 4:'!', 5:'-', 6:';', 7:':', 8:'...'}
+PUNCTUATION_VOCABULARY = {0:EMPTY, 1:',', 2:'.', 3:'?', 4:'!', 5:'-', 6:';', 7:':', 8:'...'}
 PUNCTUATION_VOCABULARY_LITERAL = {0:EMPTY, 1:',', 2:'.', 3:'?', 4:'!', 5:'-', 6:';', 7:':', 8:'...'}
 REDUCED_PUNCTUATION_VOCABULARY = {0:SPACE, 1:',', 2:'.', 3:'?'}
 REDUCED_INV_PUNCTUATION_CODES = {EMPTY:0, SPACE:0, ',':1, '.':2, '?':3, '':0}
@@ -30,38 +30,49 @@ def pad(l, size, padding):
 	else:
 		return l[0:size]
 
-def read_proscript(filename, add_end=False):
-	columns = defaultdict(list) # each value in each column is appended to a list
+def read_proscript(filename, add_end=False, shift_punc_after_to_before=False):
+    columns = defaultdict(list) # each value in each column is appended to a list
 
-	skip_columns = []
-	with open(filename) as f:
-		reader = csv.DictReader(f, delimiter='|') # read rows into a dictionary format
-		for row in reader: # read a row as {column1: value1, column2: value2,...}
-			for (k,v) in row.items(): # go over each column name and value 
-				if not k in skip_columns:
-					if "word" in k or "punctuation" in k or "pos" in k or "id" in k:
-						columns[k].append(v) # append the value into the appropriate list
-					elif "contour" in k:
-						arr_rep = json.loads(v)
-						columns[k].append(arr_rep)
-					else:
-						try:
-							columns[k].append(float(v)) # real value
-						except ValueError:
-							skip_columns.append(k)
-		if add_end and not columns['word'][-1] == END:
-			for k in columns.keys():
-				if k == "id":
-					columns[k].append('end.end99.end99')
-				elif "word" in k:
-					columns[k].append(END)
-				elif "punctuation" in k or "pos" in k:
-					columns[k].append("")
-				elif "contour" in k:
-					columns[k].append([0.0])
-				else:
-					columns[k].append(0.0)
-	return columns
+    skip_columns = []
+    with open(filename) as f:
+        reader = csv.DictReader(f, delimiter='|') # read rows into a dictionary format
+        for row in reader: # read a row as {column1: value1, column2: value2,...}
+            for (k,v) in row.items(): # go over each column name and value 
+                if not k in skip_columns:
+                    if "word" in k or "punctuation" in k or "pos" in k or "id" in k:
+                        columns[k].append(v) # append the value into the appropriate list
+                    elif "contour" in k:
+                        arr_rep = json.loads(v)
+                        columns[k].append(arr_rep)
+                    else:
+                        try:
+                            columns[k].append(float(v)) # real value
+                        except ValueError:
+                            skip_columns.append(k)
+        if add_end and not columns['word'][-1] == END:
+            for k in columns.keys():
+                if k == "id":
+                    columns[k].append('end.end99.end99')
+                elif "word" in k:
+                    columns[k].append(END)
+                elif "punctuation" in k or "pos" in k:
+                    columns[k].append("")
+                elif "contour" in k:
+                    columns[k].append([0.0])
+                else:
+                    columns[k].append(0.0)
+
+    if shift_punc_after_to_before:
+        for index, punc in enumerate(columns['punctuation_after']):
+            if index == len(columns['punctuation_after']) - 1:
+                break
+            columns['punctuation_before'][index + 1] += punc
+    
+    new_punc_column = [puncProper(punc) for punc in columns['punctuation_before']]
+    
+    columns['punctuation_before'] = new_punc_column
+
+    return columns
 
 def checkArgument(argname, isFile=False, isDir=False, createDir=False):
 	if not argname:
@@ -149,15 +160,38 @@ def convert_value_to_level_sequence(value_sequence, bins):
 	return levels
 
 def reducePuncCode(puncCode):
-	if puncCode in [4, 5, 6, 7, 8]: #period
-		return 2
-	else:
-		return puncCode
+    if puncCode == 8:
+        return 0
+    elif puncCode in [4, 5, 6, 7]: #period
+        return 2
+    else:
+        return puncCode
 
 def reducePunc(punc):
-	if punc and not punc.isspace():
-		puncCode = INV_PUNCTUATION_CODES[punc]
-		reducedPuncCode = reducePuncCode(puncCode)
-		return PUNCTUATION_VOCABULARY[reducedPuncCode]
-	else:
-		return punc
+	puncCode = INV_PUNCTUATION_CODES[punc]
+	reducedPuncCode = reducePuncCode(puncCode)
+	return PUNCTUATION_VOCABULARY[reducedPuncCode]
+
+def puncEstimate(punc):
+    if '.' in punc:
+        return '.'
+    elif ',' in punc:
+        return ','
+    elif '?' in punc:
+        return '?'
+    elif '!' in punc:
+        return '!'
+    elif ':' in punc:
+        return ':'
+    elif ';' in punc:
+        return ';'
+    elif '-' in punc:
+        return '-'
+    else:
+        return ''
+    
+def puncProper(punc):
+    if punc in INV_PUNCTUATION_CODES.keys():
+        return punc
+    else:
+        return puncEstimate(punc)
